@@ -22,28 +22,31 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 def setup_logging(verbose: bool = False) -> logging.Logger:
     """Настройка логирования"""
     level = logging.DEBUG if verbose else logging.INFO
-    
-    # Логирование в консоль
+
+    # Логирование в консоль с поддержкой UTF-8
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
     console_formatter = logging.Formatter('%(message)s')
     console_handler.setFormatter(console_formatter)
-    
-    # Логирование в файл
-    file_handler = logging.FileHandler('check_server_logs.log')
+    # Принудительно устанавливаем UTF-8 для консоли
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+
+    # Логирование в файл с UTF-8
+    file_handler = logging.FileHandler('check_server_logs.log', encoding='utf-8')
     file_handler.setLevel(logging.DEBUG)
     file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(file_formatter)
-    
+
     # Настройка root logger
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
-    
+
     # Отключаем verbose логи paramiko
     logging.getLogger('paramiko').setLevel(logging.WARNING)
-    
+
     return logger
 
 
@@ -173,10 +176,15 @@ class ServerReport:
 class SSHConnection:
     """Управление SSH соединением"""
     
-    def __init__(self, hostname: str, username: str = 'root', 
+    def __init__(self, hostname: str, username: str = 'root',
                  ssh_config: Optional[str] = None, timeout: int = 30):
         self.hostname = hostname
         self.username = username
+        # Если конфиг не указан, пытаемся использовать стандартный
+        if ssh_config is None:
+            default_config = Path.home() / '.ssh' / 'config'
+            if default_config.exists():
+                ssh_config = str(default_config)
         self.ssh_config = ssh_config
         self.timeout = timeout
         self.client = None
