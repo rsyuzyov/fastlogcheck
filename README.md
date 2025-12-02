@@ -13,7 +13,7 @@
 **Windows:**
 
 ```cmd
-install.bat
+powershell install.bat
 ```
 
 # Использование
