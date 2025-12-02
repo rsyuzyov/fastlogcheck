@@ -1,13 +1,23 @@
 @echo off
 REM Универсальный скрипт проверки и установки Python для Windows
-REM Версия: 1.2.0
-REM Использование: Просто запустите скрипт - он сам проверит наличие Python
+REM Версия: 1.3.0
+REM Использование: install-python.bat [/quiet]
+REM   /quiet - Тихая установка без запросов (для текущего пользователя)
 REM Exit codes: 0 = Python готов к работе, 1 = Ошибка
 
 chcp 65001 > nul
 setlocal enabledelayedexpansion
 
-cls
+REM Проверка параметра /quiet
+set "QUIET_MODE=0"
+if /i "%~1"=="/quiet" set "QUIET_MODE=1"
+if /i "%~1"=="-quiet" set "QUIET_MODE=1"
+
+if "%QUIET_MODE%"=="1" (
+    set "CALLED_FROM_PARENT=1"
+) else (
+    cls
+)
 
 echo ========================================
 echo Проверка и установка Python
@@ -43,7 +53,7 @@ set "PYTHON_FOUND=0"
 set "PYTHON_PATH="
 
 REM Проверка стандартных путей
-set "SEARCH_PATHS=C:\Python313;C:\Python312;C:\Python311;C:\Program Files\Python313;C:\Program Files\Python312;C:\Program Files\Python311;%LOCALAPPDATA%\Programs\Python\Python313;%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Programs\Python\Python311;%LOCALAPPDATA%\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0"
+set "SEARCH_PATHS=C:\Python314;C:\Python313;C:\Python312;C:\Python311;C:\Program Files\Python314;C:\Program Files\Python313;C:\Program Files\Python312;%LOCALAPPDATA%\Programs\Python\Python314;%LOCALAPPDATA%\Programs\Python\Python313;%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.14_qbz5n2kfra8p0;%LOCALAPPDATA%\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0"
 
 for %%P in (%SEARCH_PATHS%) do (
     if exist "%%P\python.exe" (
@@ -64,7 +74,13 @@ if "%PYTHON_FOUND%"=="1" (
     echo.
     echo Python найден, но не добавлен в PATH
     echo.
-    set /p "ADD_TO_PATH=Добавить найденный Python в PATH? (Y/N): "
+
+    if "%QUIET_MODE%"=="1" (
+        set "ADD_TO_PATH=Y"
+        echo ✅ Тихий режим: автоматическое добавление в PATH
+    ) else (
+        set /p "ADD_TO_PATH=Добавить найденный Python в PATH? (Y/N): "
+    )
 
     if /i "!ADD_TO_PATH!"=="Y" (
         echo.
@@ -105,36 +121,45 @@ echo.
 REM [Шаг 3] Выбор типа установки
 echo [3/9] Выбор типа установки...
 echo.
-echo Выберите тип установки:
-echo.
-echo   [1] Для текущего пользователя (рекомендуется)
-echo       - Не требует прав администратора
-echo       - Устанавливается в: %LOCALAPPDATA%\Programs\Python
-echo       - Доступен только для вашей учетной записи
-echo.
-echo   [2] Для всех пользователей
-echo       - Требует права администратора
-echo       - Устанавливается в: C:\Program Files\Python313
-echo       - Доступен для всех пользователей системы
-echo.
-set /p "INSTALL_TYPE=Ваш выбор (1 или 2, Enter = 1): "
-
-REM По умолчанию - для текущего пользователя
-if "!INSTALL_TYPE!"=="" set "INSTALL_TYPE=1"
-
-echo.
 
 set "INSTALL_FOR_ALL=0"
 set "NEED_ADMIN=0"
 
-if "!INSTALL_TYPE!"=="2" (
-    set "INSTALL_FOR_ALL=1"
-    set "NEED_ADMIN=1"
-    echo ✅ Выбрана установка для всех пользователей
+if "%QUIET_MODE%"=="1" (
+    REM Тихий режим - всегда для текущего пользователя
+    set "INSTALL_TYPE=1"
+    echo ✅ Тихий режим: установка для текущего пользователя
+    echo.
 ) else (
-    echo ✅ Выбрана установка для текущего пользователя
+    REM Интерактивный режим
+    echo Выберите тип установки:
+    echo.
+    echo   [1] Для текущего пользователя (рекомендуется)
+    echo       - Не требует прав администратора
+    echo       - Устанавливается в: %LOCALAPPDATA%\Programs\Python
+    echo       - Доступен только для вашей учетной записи
+    echo.
+    echo   [2] Для всех пользователей
+    echo       - Требует права администратора
+    echo       - Устанавливается в: C:\Program Files\Python313
+    echo       - Доступен для всех пользователей системы
+    echo.
+    set /p "INSTALL_TYPE=Ваш выбор (1 или 2, Enter = 1): "
+
+    REM По умолчанию - для текущего пользователя
+    if "!INSTALL_TYPE!"=="" set "INSTALL_TYPE=1"
+
+    echo.
+
+    if "!INSTALL_TYPE!"=="2" (
+        set "INSTALL_FOR_ALL=1"
+        set "NEED_ADMIN=1"
+        echo ✅ Выбрана установка для всех пользователей
+    ) else (
+        echo ✅ Выбрана установка для текущего пользователя
+    )
+    echo.
 )
-echo.
 
 REM [Шаг 4] Проверка прав администратора (если нужно)
 if "%NEED_ADMIN%"=="1" (
@@ -172,8 +197,8 @@ echo.
 REM [Шаг 6] Определение версии Python
 echo [6/9] Определение версии Python для установки...
 
-set "PYTHON_VERSION=3.13.1"
-set "PYTHON_MAJOR=3.13"
+set "PYTHON_VERSION=3.14.0"
+set "PYTHON_MAJOR=3.14"
 
 echo ✅ Будет установлен Python %PYTHON_VERSION%
 echo.
@@ -187,27 +212,33 @@ echo Параметры установки:
 echo   • Версия: Python %PYTHON_VERSION%
 if "%INSTALL_FOR_ALL%"=="1" (
     echo   • Установка: Для всех пользователей
-    echo   • Путь: C:\Program Files\Python313
+    echo   • Путь: C:\Program Files\Python314
 ) else (
     echo   • Установка: Для текущего пользователя
-    echo   • Путь: %LOCALAPPDATA%\Programs\Python\Python313
+    echo   • Путь: %LOCALAPPDATA%\Programs\Python\Python314
 )
 echo   • PATH: Будет добавлен автоматически
 echo   • Размер: ~30-40 МБ
 echo.
-set /p "CONFIRM=Установить Python? (Y/N): "
 
-if /i not "%CONFIRM%"=="Y" (
+if "%QUIET_MODE%"=="1" (
+    echo ✅ Тихий режим: установка без подтверждения
     echo.
-    echo ❌ Установка отменена пользователем
+) else (
+    set /p "CONFIRM=Установить Python? (Y/N): "
+
+    if /i not "!CONFIRM!"=="Y" (
+        echo.
+        echo ❌ Установка отменена пользователем
+        echo.
+        if not "%CALLED_FROM_PARENT%"=="1" pause
+        exit /b 1
+    )
+
     echo.
-    pause
-    exit /b 1
+    echo ✅ Подтверждение получено
+    echo.
 )
-
-echo.
-echo ✅ Подтверждение получено
-echo.
 
 REM [Шаг 8] Попытка установки через winget
 echo [8/9] Попытка установки через winget...
@@ -221,10 +252,10 @@ if %errorlevel% equ 0 (
 
     if "%INSTALL_FOR_ALL%"=="1" (
         REM Для всех пользователей
-        winget install Python.Python.3.13 --scope machine --silent --accept-package-agreements --accept-source-agreements
+        winget install Python.Python.3.14 --scope machine --silent --accept-package-agreements --accept-source-agreements
     ) else (
         REM Для текущего пользователя
-        winget install Python.Python.3.13 --scope user --silent --accept-package-agreements --accept-source-agreements
+        winget install Python.Python.3.14 --scope user --silent --accept-package-agreements --accept-source-agreements
     )
 
     if %errorlevel% equ 0 (
@@ -269,7 +300,7 @@ if %errorlevel% neq 0 (
     echo   2. Скачайте Python %PYTHON_VERSION% или новее
     echo   3. Запустите установщик с опцией "Add Python to PATH"
     echo.
-    pause
+    if not "%CALLED_FROM_PARENT%"=="1" pause
     exit /b 1
 )
 
@@ -308,7 +339,7 @@ if %errorlevel% neq 0 (
     echo Рекомендуется установить Python вручную:
     echo   https://www.python.org/downloads/
     echo.
-    pause
+    if not "%CALLED_FROM_PARENT%"=="1" pause
     exit /b 1
 )
 
@@ -341,7 +372,7 @@ if %errorlevel% neq 0 (
     echo.
 
     REM Поиск Python снова с расширенными путями
-    set "EXTENDED_PATHS=C:\Python313;C:\Python312;C:\Python311;C:\Program Files\Python313;C:\Program Files\Python312;%LOCALAPPDATA%\Programs\Python\Python313;%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Microsoft\WindowsApps;%LOCALAPPDATA%\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0;%LOCALAPPDATA%\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0"
+    set "EXTENDED_PATHS=C:\Python314;C:\Python313;C:\Python312;C:\Program Files\Python314;C:\Program Files\Python313;%LOCALAPPDATA%\Programs\Python\Python314;%LOCALAPPDATA%\Programs\Python\Python313;%LOCALAPPDATA%\Microsoft\WindowsApps;%LOCALAPPDATA%\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.14_qbz5n2kfra8p0;%LOCALAPPDATA%\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0"
 
     for %%P in (!EXTENDED_PATHS!) do (
         if exist "%%P\python.exe" (
@@ -370,7 +401,7 @@ if %errorlevel% neq 0 (
     echo   2. Откройте новую командную строку
     echo   3. Python будет доступен автоматически
     echo.
-    pause
+    if not "%CALLED_FROM_PARENT%"=="1" pause
     exit /b 0
 )
 
@@ -416,10 +447,14 @@ for /f "skip=2 tokens=3*" %%a in ('reg query "HKCU\Environment" /v Path 2^>nul')
 set "PATH=%SYS_PATH%;%USER_PATH%"
 
 REM Добавим стандартные пути Python явно (на случай задержки обновления PATH)
+set "PATH=%PATH%;C:\Python314;C:\Python314\Scripts"
 set "PATH=%PATH%;C:\Python313;C:\Python313\Scripts"
+set "PATH=%PATH%;C:\Program Files\Python314;C:\Program Files\Python314\Scripts"
 set "PATH=%PATH%;C:\Program Files\Python313;C:\Program Files\Python313\Scripts"
+set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Python\Python314;%LOCALAPPDATA%\Programs\Python\Python314\Scripts"
 set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Python\Python313;%LOCALAPPDATA%\Programs\Python\Python313\Scripts"
 set "PATH=%PATH%;%LOCALAPPDATA%\Microsoft\WindowsApps"
+set "PATH=%PATH%;%LOCALAPPDATA%\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.14_qbz5n2kfra8p0"
 set "PATH=%PATH%;%LOCALAPPDATA%\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0"
 
 exit /b 0

@@ -1,6 +1,6 @@
 # Fast log check tool
 
-Инструмент для быстрой проверки логов на linux-серверах.
+Инструмент для быстрой проверки логов на linux-серверах. Можно выполнять по списку
 
 ## Установка
 
@@ -14,6 +14,12 @@
 
 ```cmd
 install.bat
+```
+
+или
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
 # Использование
