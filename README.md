@@ -1,4 +1,4 @@
-# Server Logs Analysis Tool
+# Fast log check tool
 
 Инструмент для быстрой проверки логов на linux-серверах.
 
