@@ -233,8 +233,8 @@
             background: white;
             border: 1px solid #e9ecef;
             border-radius: 6px;
-            padding: 15px;
-            margin-bottom: 12px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
         }
 
         .error-item:last-child {
@@ -245,30 +245,33 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 6px;
         }
 
         .error-type {
             font-weight: 600;
             color: #212529;
+            font-size: 13px;
         }
 
         .error-time {
-            font-size: 12px;
+            font-size: 11px;
             color: #6c757d;
             font-family: 'Courier New', monospace;
         }
 
         .error-message {
             background: #f8f9fa;
-            padding: 12px;
+            padding: 4px 8px;
             border-radius: 4px;
             font-family: 'Courier New', monospace;
-            font-size: 13px;
+            font-size: 12px;
             color: #495057;
             overflow-x: auto;
             white-space: pre-wrap;
             word-break: break-all;
+            line-height: 1.4;
+            text-align: left;
         }
 
         .error-details-list {
@@ -467,13 +470,8 @@
                                         {% endif %}
                                     </span>
                                 </div>
-                                <div class="error-message">
-                                    {% if group.group_message %}
-                                    {{ group.group_message }}
-                                    {% else %}
-                                    {{ group.entry.message }}
-                                    {% endif %}
-                                </div>
+                                <div class="error-message">{% if group.group_message %}{{ group.group_message }}{% else
+                                    %}{{ group.entry.message }}{% endif %}</div>
 
                                 {% if group.count > 1 %}
                                 <div class="error-details-list" onclick="event.stopPropagation()">

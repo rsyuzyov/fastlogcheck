@@ -3,5 +3,6 @@
     "can't initialize service": "Ошибка инициализации сервиса",
     "cmap_initialize failed": "Ошибка инициализации cmap",
     "cpg_initialize failed": "Ошибка инициализации cpg",
-    "quorum_initialize failed": "Ошибка инициализации quorum"
+    "quorum_initialize failed": "Ошибка инициализации quorum",
+    "got unexpected replication job error": "Ошибка репликации"
 }
