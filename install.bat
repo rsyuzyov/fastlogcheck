@@ -2,12 +2,11 @@
 REM Скрипт установки зависимостей для Server Logs Analysis Tool
 REM Windows Batch version
 
-setlocal enabledelayedexpansion
+setlocal
 chcp 65001 > nul
-cls
 
 echo ================================
-echo Server Logs Analysis Tool
+echo Fast Check Logs Tool
 echo Установка зависимостей
 echo ================================
 echo.
@@ -16,15 +15,14 @@ REM Проверка и установка Python (если необходимо
 echo [1/4] Проверка Python...
 echo.
 
-REM Запускаем скрипт проверки/установки Python в тихом режиме
-call "%~dp0python-installer\install-python.bat" /quiet
+REM Запускаем скрипт проверки/установки Python в автоматическом режиме
+call "%~dp0python-installer\install-python.bat" /mode user
 
 REM Проверяем результат
 if errorlevel 1 (
     echo.
     echo ❌ Не удалось настроить Python
     echo.
-    pause
     exit /b 1
 )
 
@@ -44,7 +42,6 @@ if errorlevel 1 (
     echo ❌ pip не найден
     echo.
     echo Установите pip: python -m ensurepip --upgrade
-    pause
     exit /b 1
 )
 
@@ -60,7 +57,6 @@ if errorlevel 1 (
     echo.
     echo Попробуйте установить вручную:
     echo   python -m pip install paramiko jinja2
-    pause
     exit /b 1
 )
 
@@ -73,7 +69,6 @@ echo [4/4] Проверка установки...
 python -c "import paramiko, jinja2" 2> nul
 if errorlevel 1 (
     echo ❌ Ошибка импорта модулей
-    pause
     exit /b 1
 )
 
@@ -101,7 +96,6 @@ echo.
 echo Подробнее: см. README.md и USAGE.md
 echo.
 
-pause
 exit /b 0
 
 REM ===== Функция обновления переменных окружения =====
