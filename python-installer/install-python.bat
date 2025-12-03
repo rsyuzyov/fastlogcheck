@@ -200,7 +200,7 @@ if "%NEED_ADMIN%"=="1" (
         echo.
 
         REM Перезапуск с правами администратора с параметрами /quiet /for-all
-        powershell -Command "Start-Process '%~f0' -ArgumentList '/quiet /for-all' -Verb RunAs"
+        powershell -Command "Start-Process -FilePath '%~f0' -ArgumentList '/quiet', '/for-all' -Verb RunAs"
         exit /b
     )
     %VECHO% ✅ Права администратора получены
