@@ -20,7 +20,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1000px;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
@@ -68,23 +68,23 @@
 
         .summary {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            padding: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 10px;
+            padding: 10px;
             background: #f8f9fa;
             border-bottom: 2px solid #e9ecef;
         }
 
         .summary-card {
             background: white;
-            padding: 20px;
+            padding: 10px;
             border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             text-align: center;
         }
 
         .summary-card .number {
-            font-size: 32px;
+            font-size: 28px;
             font-weight: bold;
             margin-bottom: 5px;
         }
@@ -380,8 +380,6 @@
             <div class="subtitle">Анализ за 24 часов • 2025-12-02 16:10:22</div>
         </div>
 
-        
-
         <div class="summary">
             <div class="summary-card errors">
                 <div class="number">1195</div>
@@ -418,8 +416,8 @@
                 
                 <tr onclick="toggleRow(this)">
                     <td>
-                        <span class="expand-icon">▶</span>
-                        <div class="source-name">Fail2ban (защита от брутфорса)</div>
+                        
+                        <div class="source-name"><span class="expand-icon">▶</span>Fail2ban (защита от брутфорса)</div>
                         <div class="source-path">/var/log/fail2ban.log</div>
                     </td>
                     <td class="center">
@@ -505,8 +503,8 @@
                 
                 <tr onclick="toggleRow(this)">
                     <td>
-                        <span class="expand-icon">▶</span>
-                        <div class="source-name">Corosync кластер</div>
+                        
+                        <div class="source-name"><span class="expand-icon">▶</span>Corosync кластер</div>
                         <div class="source-path">journalctl -u corosync</div>
                     </td>
                     <td class="center">
@@ -537,8 +535,8 @@
                 
                 <tr onclick="toggleRow(this)">
                     <td>
-                        <span class="expand-icon">▶</span>
-                        <div class="source-name">Системный журнал (критические)</div>
+                        
+                        <div class="source-name"><span class="expand-icon">▶</span>Системный журнал (критические)</div>
                         <div class="source-path">journalctl --priority=err</div>
                     </td>
                     <td class="center">
@@ -6484,8 +6482,8 @@
                 
                 <tr onclick="toggleRow(this)">
                     <td>
-                        <span class="expand-icon">▶</span>
-                        <div class="source-name">Системные сообщения ядра</div>
+                        
+                        <div class="source-name"><span class="expand-icon">▶</span>Системные сообщения ядра</div>
                         <div class="source-path">dmesg</div>
                     </td>
                     <td class="center">
@@ -6716,8 +6714,8 @@
                 
                 <tr onclick="toggleRow(this)">
                     <td>
-                        <span class="expand-icon">▶</span>
-                        <div class="source-name">PVE Proxy (HTTP доступ)</div>
+                        
+                        <div class="source-name"><span class="expand-icon">▶</span>PVE Proxy (HTTP доступ)</div>
                         <div class="source-path">/var/log/pveproxy/access.log</div>
                     </td>
                     <td class="center">
@@ -6893,8 +6891,8 @@
                 
                 <tr onclick="toggleRow(this)">
                     <td>
-                        <span class="expand-icon">▶</span>
-                        <div class="source-name">Системный журнал (предупреждения)</div>
+                        
+                        <div class="source-name"><span class="expand-icon">▶</span>Системный журнал (предупреждения)</div>
                         <div class="source-path">journalctl --priority=warning</div>
                     </td>
                     <td class="center">
@@ -21555,8 +21553,8 @@
                 
                 <tr onclick="toggleRow(this)">
                     <td>
-                        <span class="expand-icon">▶</span>
-                        <div class="source-name">Лог аутентификации</div>
+                        
+                        <div class="source-name"><span class="expand-icon">▶</span>Лог аутентификации</div>
                         <div class="source-path">/var/log/auth.log</div>
                     </td>
                     <td class="center">
@@ -21712,8 +21710,8 @@
                 
                 <tr onclick="toggleRow(this)">
                     <td>
-                        <span class="expand-icon">▶</span>
-                        <div class="source-name">Кластер Proxmox (кворум)</div>
+                        
+                        <div class="source-name"><span class="expand-icon">▶</span>Кластер Proxmox (кворум)</div>
                         <div class="source-path">pvecm status</div>
                     </td>
                     <td class="center">
@@ -21763,8 +21761,8 @@
                 
                 <tr onclick="toggleRow(this)">
                     <td>
-                        <span class="expand-icon">▶</span>
-                        <div class="source-name">Хранилища (дисковое пространство)</div>
+                        
+                        <div class="source-name"><span class="expand-icon">▶</span>Хранилища (дисковое пространство)</div>
                         <div class="source-path">pvesm status</div>
                     </td>
                     <td class="center">
@@ -21835,8 +21833,8 @@
                 
                 <tr onclick="toggleRow(this)">
                     <td>
-                        <span class="expand-icon">▶</span>
-                        <div class="source-name">Виртуальные машины (статус)</div>
+                        
+                        <div class="source-name"><span class="expand-icon">▶</span>Виртуальные машины (статус)</div>
                         <div class="source-path">qm list</div>
                     </td>
                     <td class="center">
