@@ -162,11 +162,6 @@ REM [Шаг 6] Определение версии Python
 set "PYTHON_VERSION=3.14.0"
 set "PYTHON_MAJOR=3.14"
 
-if /i not "!CONFIRM!"=="Y" (
-    echo ❌ Установка отменена пользователем
-    exit /b 1
-)
-
 REM [Шаг 8] Попытка установки через winget
 winget --version >nul 2>&1
 if %errorlevel% equ 0 (
