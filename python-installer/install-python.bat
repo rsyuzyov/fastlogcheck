@@ -201,7 +201,7 @@ if "%NEED_ADMIN%"=="1" (
 
         REM Перезапуск с правами администратора с параметрами /quiet /for-all
         set "SCRIPT_PATH=%~f0"
-        powershell -Command "Start-Process -FilePath '%SCRIPT_PATH%' -ArgumentList '/quiet /for-all' -Verb RunAs"
+        powershell -Command "Start-Process -FilePath '!SCRIPT_PATH!' -ArgumentList '/quiet /for-all' -Verb RunAs"
         exit /b
     )
     %VECHO% ✅ Права администратора получены
