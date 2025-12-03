@@ -2,7 +2,7 @@
 
 Инструмент для быстрой параллельной проверки логов на множестве linux-серверов.  
 Пробегается по списку серверов и сорбирает ошибки из логов и создает html-отчет.  
-Каждый раздел в отчете можно [развернуть до детальных записей]("https://htmlpreview.github.io/?https://github.com/rsyuzyov/fastlogcheck/blob/main/docs/example-report.html")  
+Каждый раздел в отчете можно [развернуть до детальных записей](https://htmlpreview.github.io/?https://github.com/rsyuzyov/fastlogcheck/blob/main/docs/example-report.html)  
 <a href="https://htmlpreview.github.io/?https://github.com/rsyuzyov/fastlogcheck/blob/main/docs/example-report.html"><img src="docs/screenshot-example.gif" alt="Пример отчета" width="40%"></a>
 
 ## Установка
