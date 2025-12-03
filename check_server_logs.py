@@ -58,10 +58,10 @@ def parse_arguments() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Примеры использования:
-  %(prog)s srv-hv4
-  %(prog)s srv-hv1 srv-hv2 srv-hv4 --period 48
-  %(prog)s srv-hv4 --cleanup-threshold 85 --verbose
-  %(prog)s srv-hv1 --output custom_report.html
+  %(prog)s server1.example.com
+  %(prog)s server1.example.com server2.example.com server3.example.com --period 48
+  %(prog)s server1.example.com --cleanup-threshold 85 --verbose
+  %(prog)s server1.example.com --output custom_report.html
         """
     )
     
@@ -1216,7 +1216,7 @@ def generate_html_report(report: ServerReport, output_file: str):
 
 
 def generate_html_inline(report: ServerReport) -> str:
-    """Генерация HTML без шаблона (стиль как в оригинальном артефакте srv-hv4)"""
+    """Генерация HTML без шаблона (стиль как в оригинальном артефакте)"""
     
     # Полный CSS из оригинального артефакта
     css = """

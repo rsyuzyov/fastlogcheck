@@ -88,10 +88,10 @@ echo.
 echo Примеры использования:
 echo.
 echo   # Базовая проверка
-echo   python check_server_logs.py srv-hv1.ag.local
+echo   python check_server_logs.py server1.example.com
 echo.
 echo   # Несколько серверов
-echo   python check_server_logs.py srv-hv1.ag.local srv-hv2.ag.local
+echo   python check_server_logs.py server1.example.com server2.example.com
 echo.
 echo Подробнее: см. README.md и USAGE.md
 echo.

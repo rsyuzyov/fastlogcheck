@@ -30,50 +30,50 @@ usage: check_server_logs.py [-h] [--period PERIOD] [--output OUTPUT]
 
 ```bash
 # Проверка одного сервера за последние 24 часа
-./check_server_logs.py srv-hv4.ag.local --ssh-config ~/.ssh/config
+./check_server_logs.py server1.example.com --ssh-config ~/.ssh/config
 
 # Проверка нескольких серверов
-./check_server_logs.py srv-hv1.ag.local srv-hv2.ag.local srv-hv4.ag.local --ssh-config ~/.ssh/config
+./check_server_logs.py server1.example.com server2.example.com server3.example.com --ssh-config ~/.ssh/config
 
 # Проверка за последние 48 часов
-./check_server_logs.py srv-hv4.ag.local --period 48 --ssh-config ~/.ssh/config
+./check_server_logs.py server1.example.com --period 48 --ssh-config ~/.ssh/config
 ```
 
 ### С автоочисткой ZFS
 
 ```bash
 # Автоматически очистить ZFS снимки если использование > 85%
-./check_server_logs.py srv-hv4.ag.local --cleanup-threshold 85 --ssh-config ~/.ssh/config
+./check_server_logs.py server1.example.com --cleanup-threshold 85 --ssh-config ~/.ssh/config
 
 # С кастомным порогом 80%
-./check_server_logs.py srv-hv1.ag.local srv-hv2.ag.local --cleanup-threshold 80 --ssh-config ~/.ssh/config
+./check_server_logs.py server1.example.com server2.example.com --cleanup-threshold 80 --ssh-config ~/.ssh/config
 ```
 
 ### С кастомными параметрами
 
 ```bash
 # С verbose режимом
-./check_server_logs.py srv-hv4.ag.local \
+./check_server_logs.py server1.example.com \
   --ssh-config ~/.ssh/config \
   --verbose
 
 # С кастомным именем выходного файла
-./check_server_logs.py srv-hv4.ag.local \
+./check_server_logs.py server1.example.com \
   --ssh-config ~/.ssh/config \
   --output my_custom_report.html
 
 # С экспортом в JSON
-./check_server_logs.py srv-hv4.ag.local \
+./check_server_logs.py server1.example.com \
   --ssh-config ~/.ssh/config \
   --json
 
 # Больше параллельных потоков (по умолчанию 4)
-./check_server_logs.py srv-hv4.ag.local \
+./check_server_logs.py server1.example.com \
   --ssh-config ~/.ssh/config \
   --parallel 8
 
 # Увеличенный timeout для медленных серверов
-./check_server_logs.py srv-hv4.ag.local \
+./check_server_logs.py server1.example.com \
   --ssh-config ~/.ssh/config \
   --ssh-timeout 60
 ```
@@ -99,6 +99,7 @@ usage: check_server_logs.py [-h] [--period PERIOD] [--output OUTPUT]
 Скрипт автоматически классифицирует ошибки:
 
 ### 🔴 Критические (Critical):
+
 - Деградация дисковых массивов/пулов
 - Потеря кворума кластера
 - Out of memory, disk full
@@ -107,6 +108,7 @@ usage: check_server_logs.py [-h] [--period PERIOD] [--output OUTPUT]
 - Повторяющиеся ошибки сервисов
 
 ### ⚠️ Предупреждения (Warning):
+
 - Единичные ошибки termproxy/VNC сессий
 - inotify проблемы
 - Временные сетевые проблемы (если кворум сохранён)
@@ -115,6 +117,7 @@ usage: check_server_logs.py [-h] [--period PERIOD] [--output OUTPUT]
 - Неудачные попытки SSH входа
 
 ### ℹ️ Информационные (Info):
+
 - Нормальная ротация ключей
 - Плановые остановки сервисов
 - Статус кворума (если всё ОК)
@@ -131,14 +134,15 @@ usage: check_server_logs.py [-h] [--period PERIOD] [--output OUTPUT]
 3. Логирует каждую итерацию и результат
 
 **Пример:**
+
 ```bash
-./check_server_logs.py srv-hv4.ag.local --cleanup-threshold 85 --ssh-config ~/.ssh/config
+./check_server_logs.py server1.example.com --cleanup-threshold 85 --ssh-config ~/.ssh/config
 
 # Вывод:
-# [srv-hv4] pool2: 92.6% > 85%, запуск очистки...
-# [srv-hv4]   Итерация 1: 92.6% -> 78.3%
-# [srv-hv4]   Итерация 2: 78.3% -> 39.4%
-# [srv-hv4] ✅ Очистка завершена
+# [server1] pool2: 92.6% > 85%, запуск очистки...
+# [server1]   Итерация 1: 92.6% -> 78.3%
+# [server1]   Итерация 2: 78.3% -> 75.4%
+# [server1] ✅ Очистка завершена
 ```
 
 ## Настройка группировки логов
@@ -146,36 +150,39 @@ usage: check_server_logs.py [-h] [--period PERIOD] [--output OUTPUT]
 Для улучшения читаемости отчета, скрипт группирует похожие сообщения. Вы можете настроить правила группировки в файле `grouping_rules.json` в директории скрипта.
 
 **Формат файла `grouping_rules.json`:**
+
 ```json
 {
-    "регулярное_выражение": {
-        "title": "Текст, который будет отображаться в заголовке группы",
-        "severity": "error"
-    },
-    "CS_ERR_LIBRARY.*corosync": {
-        "title": "Ошибки подключения к corosync",
-        "severity": "error"
-    },
-    "got unexpected replication job error": {
-        "title": "Ошибка репликации",
-        "severity": "error"
-    },
-    "inotify": {
-        "title": "Проблемы с inotify (несущественно)",
-        "severity": "skip"
-    },
-    "some pattern": {
-        "title": "Сохранить исходный severity",
-        "severity": ""
-    }
+  "регулярное_выражение": {
+    "title": "Текст, который будет отображаться в заголовке группы",
+    "severity": "error"
+  },
+  "CS_ERR_LIBRARY.*corosync": {
+    "title": "Ошибки подключения к corosync",
+    "severity": "error"
+  },
+  "got unexpected replication job error": {
+    "title": "Ошибка репликации",
+    "severity": "error"
+  },
+  "inotify": {
+    "title": "Проблемы с inotify (несущественно)",
+    "severity": "skip"
+  },
+  "some pattern": {
+    "title": "Сохранить исходный severity",
+    "severity": ""
+  }
 }
 ```
 
 **Ключи - регулярные выражения:**
+
 - Проверка выполняется через `re.search()`, поддерживаются все возможности Python regex
 - Примеры: `"error.*failed"`, `"(sudo|su)\\[\\d+\\]"`, `"^systemd.*timeout$"`
 
 **Уровни критичности (severity):**
+
 - `"error"` - критическая ошибка (красный цвет, увеличивает счетчик ошибок)
 - `"warning"` - предупреждение (желтый цвет, увеличивает счетчик предупреждений)
 - `"info"` - информационное сообщение (синий цвет)
@@ -183,6 +190,7 @@ usage: check_server_logs.py [-h] [--period PERIOD] [--output OUTPUT]
 - `""` (пустая строка) - сохранить исходный severity из лога
 
 **Поведение при группировке:**
+
 - Если сообщение соответствует регулярному выражению:
   - Оно группируется под указанным заголовком (title)
   - Применяется указанный severity (если не пустой)
@@ -194,17 +202,20 @@ usage: check_server_logs.py [-h] [--period PERIOD] [--output OUTPUT]
 ## Выходные файлы
 
 ### HTML отчёт
+
 - Интерактивная таблица с кликабельными строками
 - Цветовая индикация (красный/жёлтый/зелёный)
 - Разворачивающиеся детали для каждой проверки
 - Сводная статистика вверху
 
 ### JSON экспорт (опционально)
+
 - Структурированные данные для автоматической обработки
 - Все проверки и их результаты
 - Детали каждой ошибки/предупреждения
 
 ### Лог-файл
+
 - `check_server_logs.log` в текущей директории
 - Детальная информация о выполнении
 - Отладочные сообщения (если --verbose)
@@ -217,7 +228,7 @@ usage: check_server_logs.py [-h] [--period PERIOD] [--output OUTPUT]
 #!/bin/bash
 # daily_check.sh
 
-SERVERS="srv-hv1.ag.local srv-hv2.ag.local srv-hv4.ag.local"
+SERVERS="server1.example.com server2.example.com server3.example.com"
 REPORT_DIR="/var/www/html/reports"
 SSH_CONFIG="$HOME/.ssh/config"
 
@@ -243,7 +254,7 @@ done
 
 ```bash
 # Анализ последних 72 часов с детальным выводом
-./check_server_logs.py srv-hv4.ag.local \
+./check_server_logs.py server1.example.com \
   --ssh-config ~/.ssh/config \
   --period 72 \
   --verbose \
@@ -260,8 +271,9 @@ done
 ```
 
 **Решение:**
-1. Проверьте SSH ключи: `ssh root@srv-hv4.ag.local`
-2. Добавьте ключ: `ssh-copy-id root@srv-hv4.ag.local`
+
+1. Проверьте SSH ключи: `ssh root@server1.example.com`
+2. Добавьте ключ: `ssh-copy-id root@server1.example.com`
 3. Или укажите путь к ключу в SSH конфиге
 4. Убедитесь что используете `--ssh-config` параметр
 
@@ -272,9 +284,10 @@ done
 ```
 
 **Решение:**
+
 ```bash
 # Увеличьте timeout
-./check_server_logs.py srv-hv4.ag.local --ssh-config ~/.ssh/config --ssh-timeout 60
+./check_server_logs.py server1.example.com --ssh-config ~/.ssh/config --ssh-timeout 60
 ```
 
 ### Недостаточно прав
@@ -284,9 +297,10 @@ done
 ```
 
 **Решение:**
+
 ```bash
 # Убедитесь что подключаетесь от root
-./check_server_logs.py srv-hv4.ag.local --ssh-config ~/.ssh/config --ssh-user root
+./check_server_logs.py server1.example.com --ssh-config ~/.ssh/config --ssh-user root
 ```
 
 ## Разработка
