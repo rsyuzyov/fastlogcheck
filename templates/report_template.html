@@ -476,7 +476,7 @@
                                         {% endif %}
                                     </span>
                                 </div>
-                                <div class="error-message">{% if group.group_message %}{{ group.group_message }}{% else
+                                <div class="error-message">{% if group.count > 1 and group.group_message %}{{ group.group_message }}{% else
                                     %}{{ group.entry.message }}{% endif %}</div>
 
                                 {% if group.count > 1 %}
