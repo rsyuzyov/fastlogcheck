@@ -318,6 +318,28 @@ def read_hosts_from_ssh_config(ssh_config_path: Optional[str] = None) -> List[st
 
 # Дата-классы для хранения результатов
 @dataclass
+class ReportFileInfo:
+    """Информация о файле отчёта"""
+    filepath: Path
+    hostname: str
+    timestamp: datetime
+    date_str: str  # YYYY-MM-DD для группировки
+    time_str: str  # HH:MM для отображения
+    domain_group: str
+
+
+@dataclass
+class ReportMetadata:
+    """Метаданные отчёта (извлечённые из HTML)"""
+    hostname: str
+    timestamp: str
+    total_errors: int
+    total_warnings: int
+    status: str  # 'error', 'warning', 'success', 'connection_error'
+    period_hours: int = 24
+
+
+@dataclass
 class LogEntry:
     """Запись лога"""
 
@@ -2448,6 +2470,696 @@ def generate_html_inline(report: ServerReport) -> str:
     return html
 
 
+# ============================================================================
+# Функции для генерации сводного отчёта index.html
+# ============================================================================
+
+def extract_environment_domain(hostname: str) -> str:
+    """
+    Извлекает домен среды из hostname.
+    
+    Примеры:
+        server1.prod.example.com -> prod.example.com
+        db1.staging.example.com -> staging.example.com
+        web1.internal.corp -> internal.corp
+        simple-server -> simple-server (без домена)
+        192.168.1.100 -> 192.168.1.100 (IP-адрес)
+    
+    Args:
+        hostname: полное имя хоста
+        
+    Returns:
+        Домен среды или исходный hostname если домен не определён
+    """
+    # Убираем user@ если есть
+    if '@' in hostname:
+        hostname = hostname.split('@', 1)[1]
+    
+    # Проверяем, является ли это IP-адресом
+    ip_pattern = r'^(?:\d{1,3}\.){3}\d{1,3}$'
+    if re.match(ip_pattern, hostname):
+        return hostname
+    
+    # Разделяем по точкам
+    parts = hostname.split('.')
+    
+    # Если только одна часть (например, "localhost") - возвращаем как есть
+    if len(parts) <= 1:
+        return hostname
+    
+    # Если две части (например, "server.local") - возвращаем как есть
+    if len(parts) == 2:
+        return hostname
+    
+    # Если три и более частей - убираем первую (имя сервера)
+    # server1.prod.example.com -> prod.example.com
+    return '.'.join(parts[1:])
+
+
+def parse_report_filename(filepath: Path) -> Optional[ReportFileInfo]:
+    """
+    Парсит имя файла отчёта и извлекает метаданные.
+    
+    Формат имени: report_HOSTNAME_YYYY-MM-DD_HH-MM.html
+    
+    Args:
+        filepath: путь к файлу отчёта
+        
+    Returns:
+        ReportFileInfo или None если не удалось распарсить
+    """
+    filename = filepath.name
+    
+    # Паттерн для имени файла: report_HOSTNAME_YYYY-MM-DD_HH-MM.html
+    # HOSTNAME может содержать точки, дефисы и @ (для user@host)
+    pattern = r'^report_(.+)_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})\.html$'
+    match = re.match(pattern, filename)
+    
+    if not match:
+        return None
+    
+    hostname = match.group(1)
+    date_str = match.group(2)  # YYYY-MM-DD
+    time_str = match.group(3).replace('-', ':')  # HH:MM
+    
+    try:
+        timestamp = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+    
+    domain_group = extract_environment_domain(hostname)
+    
+    return ReportFileInfo(
+        filepath=filepath,
+        hostname=hostname,
+        timestamp=timestamp,
+        date_str=date_str,
+        time_str=time_str,
+        domain_group=domain_group
+    )
+
+
+def extract_report_metadata(filepath: Path) -> Optional[ReportMetadata]:
+    """
+    Извлекает метаданные из HTML отчёта.
+    
+    Парсит HTML и извлекает количество ошибок, предупреждений и статус.
+    
+    Args:
+        filepath: путь к файлу отчёта
+        
+    Returns:
+        ReportMetadata или None если не удалось извлечь
+    """
+    try:
+        # Пробуем разные кодировки
+        content = None
+        for encoding in ['utf-8', 'cp1251', 'latin-1']:
+            try:
+                with open(filepath, 'r', encoding=encoding) as f:
+                    content = f.read()
+                break
+            except UnicodeDecodeError:
+                continue
+        
+        if content is None:
+            logging.warning(f"Не удалось прочитать файл {filepath} ни в одной кодировке")
+            return None
+        
+        # Извлекаем hostname из заголовка
+        hostname_match = re.search(r'Отчет по логам сервера ([^<]+)', content)
+        hostname = hostname_match.group(1).strip() if hostname_match else "Unknown"
+        
+        # Извлекаем период
+        period_match = re.search(r'Анализ за (\d+) часов', content)
+        period_hours = int(period_match.group(1)) if period_match else 24
+        
+        # Извлекаем timestamp
+        timestamp_match = re.search(r'Анализ за \d+ часов • ([^<]+)', content)
+        timestamp = timestamp_match.group(1).strip() if timestamp_match else ""
+        
+        # Проверяем на ошибку подключения
+        if 'Ошибка подключения к серверу' in content:
+            return ReportMetadata(
+                hostname=hostname,
+                timestamp=timestamp,
+                total_errors=0,
+                total_warnings=0,
+                status='connection_error',
+                period_hours=period_hours
+            )
+        
+        # Извлекаем количество ошибок
+        errors_match = re.search(r'class="summary-card errors"[^>]*>\s*<div class="number">(\d+)</div>', content)
+        total_errors = int(errors_match.group(1)) if errors_match else 0
+        
+        # Извлекаем количество предупреждений
+        warnings_match = re.search(r'class="summary-card warnings"[^>]*>\s*<div class="number">(\d+)</div>', content)
+        total_warnings = int(warnings_match.group(1)) if warnings_match else 0
+        
+        # Определяем статус
+        if total_errors > 0:
+            status = 'error'
+        elif total_warnings > 0:
+            status = 'warning'
+        else:
+            status = 'success'
+        
+        return ReportMetadata(
+            hostname=hostname,
+            timestamp=timestamp,
+            total_errors=total_errors,
+            total_warnings=total_warnings,
+            status=status,
+            period_hours=period_hours
+        )
+        
+    except Exception as e:
+        logging.warning(f"Не удалось извлечь метаданные из {filepath}: {e}")
+        return None
+
+
+def scan_reports_directory(reports_dir: Path) -> List[Tuple[ReportFileInfo, Optional[ReportMetadata]]]:
+    """
+    Сканирует каталог и возвращает список всех отчётов с метаданными.
+    
+    Args:
+        reports_dir: путь к каталогу с отчётами
+        
+    Returns:
+        Список кортежей (ReportFileInfo, ReportMetadata)
+    """
+    reports = []
+    
+    if not reports_dir.exists():
+        return reports
+    
+    for filepath in reports_dir.glob('report_*.html'):
+        # Пропускаем index.html
+        if filepath.name == 'index.html':
+            continue
+            
+        file_info = parse_report_filename(filepath)
+        if file_info is None:
+            continue
+        
+        metadata = extract_report_metadata(filepath)
+        reports.append((file_info, metadata))
+    
+    # Сортируем по дате (новые сначала), затем по домену, затем по hostname
+    reports.sort(key=lambda x: (x[0].date_str, x[0].domain_group, x[0].hostname), reverse=True)
+    
+    return reports
+
+
+def group_reports_by_date_and_domain(
+    reports: List[Tuple[ReportFileInfo, Optional[ReportMetadata]]]
+) -> Dict[str, Dict[str, List[Tuple[ReportFileInfo, Optional[ReportMetadata]]]]]:
+    """
+    Группирует отчёты по дате и домену.
+    
+    Returns:
+        Словарь вида {date_str: {domain_group: [(file_info, metadata), ...]}}
+    """
+    grouped: Dict[str, Dict[str, List]] = {}
+    
+    for file_info, metadata in reports:
+        date_str = file_info.date_str
+        domain = file_info.domain_group
+        
+        if date_str not in grouped:
+            grouped[date_str] = {}
+        
+        if domain not in grouped[date_str]:
+            grouped[date_str][domain] = []
+        
+        grouped[date_str][domain].append((file_info, metadata))
+    
+    return grouped
+
+
+def generate_index_html(reports_dir: Path):
+    """
+    Генерирует index.html со ссылками на все отчёты.
+    
+    Args:
+        reports_dir: путь к каталогу с отчётами
+    """
+    logger = logging.getLogger("IndexGenerator")
+    
+    # Сканируем каталог
+    reports = scan_reports_directory(reports_dir)
+    
+    if not reports:
+        logger.info("Нет отчётов для index.html")
+        return
+    
+    # Группируем по дате и домену
+    grouped = group_reports_by_date_and_domain(reports)
+    
+    # Считаем общую статистику
+    total_reports = len(reports)
+    total_errors = sum(m.total_errors if m else 0 for _, m in reports)
+    total_warnings = sum(m.total_warnings if m else 0 for _, m in reports)
+    servers_with_errors = sum(1 for _, m in reports if m and m.status == 'error')
+    servers_ok = sum(1 for _, m in reports if m and m.status == 'success')
+    servers_warning = sum(1 for _, m in reports if m and m.status == 'warning')
+    servers_unreachable = sum(1 for _, m in reports if m and m.status == 'connection_error')
+    
+    # Определяем директорию шаблонов
+    templates_dir = get_resource_path("templates")
+    
+    # Пробуем использовать шаблон
+    if (templates_dir / "index_template.html").exists():
+        env = Environment(
+            loader=FileSystemLoader(templates_dir),
+            autoescape=select_autoescape(["html", "xml"]),
+        )
+        template = env.get_template("index_template.html")
+        html_content = template.render(
+            grouped=grouped,
+            total_reports=total_reports,
+            total_errors=total_errors,
+            total_warnings=total_warnings,
+            servers_with_errors=servers_with_errors,
+            servers_ok=servers_ok,
+            servers_warning=servers_warning,
+            servers_unreachable=servers_unreachable,
+            generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
+    else:
+        # Генерируем inline
+        html_content = generate_index_html_inline(
+            grouped, total_reports, total_errors, total_warnings,
+            servers_with_errors, servers_ok, servers_warning, servers_unreachable
+        )
+    
+    # Сохраняем файл
+    index_path = reports_dir / "index.html"
+    with open(index_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
+    logger.info(f"📋 Сводный отчёт сохранён: {index_path}")
+
+
+def generate_index_html_inline(
+    grouped: Dict[str, Dict[str, List]],
+    total_reports: int,
+    total_errors: int,
+    total_warnings: int,
+    servers_with_errors: int,
+    servers_ok: int,
+    servers_warning: int,
+    servers_unreachable: int
+) -> str:
+    """Генерация index.html без шаблона"""
+    
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    css = """
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .summary-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .summary-card .number {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .summary-card.errors .number { color: #dc3545; }
+        .summary-card.warnings .number { color: #ffc107; }
+        .summary-card.ok .number { color: #28a745; }
+        .summary-card.total .number { color: #6c757d; }
+        
+        .summary-card .label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .date-section {
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .date-header {
+            background: #495057;
+            color: white;
+            padding: 12px 20px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .date-header:hover {
+            background: #5a6268;
+        }
+        
+        .date-header .expand-icon {
+            transition: transform 0.3s;
+        }
+        
+        .date-header.collapsed .expand-icon {
+            transform: rotate(-90deg);
+        }
+        
+        .date-content {
+            display: block;
+        }
+        
+        .date-content.collapsed {
+            display: none;
+        }
+        
+        .domain-section {
+            border-left: 4px solid #007bff;
+            margin: 10px 20px;
+            background: #f8f9fa;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .domain-header {
+            padding: 10px 15px;
+            font-weight: 600;
+            color: #495057;
+            background: #e9ecef;
+            border-radius: 0 8px 0 0;
+        }
+        
+        .domain-header .domain-icon {
+            margin-right: 8px;
+        }
+        
+        .server-list {
+            padding: 10px 15px;
+        }
+        
+        .server-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .server-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+        
+        .server-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .server-info {
+            flex: 1;
+        }
+        
+        .server-name {
+            font-weight: 600;
+            color: #212529;
+            text-decoration: none;
+        }
+        
+        .server-name:hover {
+            color: #007bff;
+            text-decoration: underline;
+        }
+        
+        .server-time {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 2px;
+        }
+        
+        .server-stats {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .badge.error {
+            background: #fee;
+            color: #dc3545;
+        }
+        
+        .badge.warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .badge.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .badge.unreachable {
+            background: #e2e3e5;
+            color: #6c757d;
+        }
+        
+        .status-icon {
+            font-size: 18px;
+        }
+        
+        .footer {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            text-align: center;
+            font-size: 12px;
+            color: #6c757d;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .no-reports {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+    """
+    
+    html = f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сводный отчёт по серверам</title>
+    <style>
+{css}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Сводный отчёт по серверам</h1>
+            <div class="subtitle">Сгенерировано: {generated_at}</div>
+        </div>
+        
+        <div class="summary">
+            <div class="summary-card total">
+                <div class="number">{total_reports}</div>
+                <div class="label">Отчётов</div>
+            </div>
+            <div class="summary-card errors">
+                <div class="number">{servers_with_errors}</div>
+                <div class="label">С ошибками</div>
+            </div>
+            <div class="summary-card warnings">
+                <div class="number">{servers_warning}</div>
+                <div class="label">С предупреждениями</div>
+            </div>
+            <div class="summary-card ok">
+                <div class="number">{servers_ok}</div>
+                <div class="label">OK</div>
+            </div>
+        </div>
+        
+        <div class="reports-list">
+"""
+    
+    if not grouped:
+        html += """
+            <div class="no-reports">
+                <p>Нет доступных отчётов</p>
+            </div>
+"""
+    else:
+        # Сортируем даты (новые сначала)
+        sorted_dates = sorted(grouped.keys(), reverse=True)
+        
+        for date_str in sorted_dates:
+            domains = grouped[date_str]
+            
+            # Считаем статистику за день
+            day_errors = 0
+            day_warnings = 0
+            day_count = 0
+            for domain_reports in domains.values():
+                for _, metadata in domain_reports:
+                    day_count += 1
+                    if metadata:
+                        day_errors += metadata.total_errors
+                        day_warnings += metadata.total_warnings
+            
+            html += f"""
+            <div class="date-section">
+                <div class="date-header" onclick="toggleDate(this)">
+                    <span>📅 {date_str} ({day_count} отчётов, {day_errors} ошибок, {day_warnings} предупреждений)</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="date-content">
+"""
+            
+            # Сортируем домены
+            sorted_domains = sorted(domains.keys())
+            
+            for domain in sorted_domains:
+                domain_reports = domains[domain]
+                
+                html += f"""
+                    <div class="domain-section">
+                        <div class="domain-header">
+                            <span class="domain-icon">🌐</span>{domain}
+                        </div>
+                        <div class="server-list">
+"""
+                
+                for file_info, metadata in domain_reports:
+                    # Определяем статус и иконку
+                    if metadata:
+                        if metadata.status == 'error':
+                            status_icon = '❌'
+                            status_class = 'error'
+                            status_text = f'{metadata.total_errors} ошибок'
+                        elif metadata.status == 'warning':
+                            status_icon = '⚠️'
+                            status_class = 'warning'
+                            status_text = f'{metadata.total_warnings} предупреждений'
+                        elif metadata.status == 'connection_error':
+                            status_icon = '🔌'
+                            status_class = 'unreachable'
+                            status_text = 'Недоступен'
+                        else:
+                            status_icon = '✅'
+                            status_class = 'success'
+                            status_text = 'OK'
+                    else:
+                        status_icon = '❓'
+                        status_class = 'unreachable'
+                        status_text = 'Неизвестно'
+                    
+                    html += f"""
+                            <div class="server-item">
+                                <div class="server-info">
+                                    <a href="{file_info.filepath.name}" class="server-name">{file_info.hostname}</a>
+                                    <div class="server-time">{file_info.time_str}</div>
+                                </div>
+                                <div class="server-stats">
+                                    <span class="badge {status_class}">{status_text}</span>
+                                    <span class="status-icon">{status_icon}</span>
+                                </div>
+                            </div>
+"""
+                
+                html += """
+                        </div>
+                    </div>
+"""
+            
+            html += """
+                </div>
+            </div>
+"""
+    
+    html += f"""
+        </div>
+        
+        <div class="footer">
+            Сводный отчёт сгенерирован автоматически • {generated_at}
+        </div>
+    </div>
+    
+    <script>
+        function toggleDate(header) {{
+            header.classList.toggle('collapsed');
+            const content = header.nextElementSibling;
+            content.classList.toggle('collapsed');
+        }}
+    </script>
+</body>
+</html>
+"""
+    
+    return html
+
+
 def main():
     """Основная функция"""
     args = parse_arguments()
@@ -2577,6 +3289,10 @@ def main():
         
         # Завершаем работу после AI-вывода
         return
+
+    # Генерируем сводный отчёт index.html
+    reports_dir = Path(args.output)
+    generate_index_html(reports_dir)
 
     # Выводим итоговую статистику
     logger.info("=" * 80)
