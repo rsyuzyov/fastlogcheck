@@ -20,6 +20,17 @@ import paramiko
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 
+def get_resource_path(relative_path: str) -> Path:
+    """Получить путь к ресурсу (работает как для dev, так и для PyInstaller)"""
+    if getattr(sys, 'frozen', False):
+        # Запущен через PyInstaller
+        base_path = Path(sys._MEIPASS)
+    else:
+        # Обычный запуск
+        base_path = Path(__file__).parent
+    return base_path / relative_path
+
+
 def cleanup_old_logs(logs_dir: Path):
     """Удаление логов старше 1 месяца"""
     cutoff = datetime.now() - timedelta(days=30)
@@ -451,8 +462,7 @@ def load_grouping_rules():
     """Загрузка правил группировки из JSON файла"""
     global CUSTOM_GROUPING_RULES
 
-    script_dir = Path(__file__).parent
-    rules_file = script_dir / "grouping_rules.json"
+    rules_file = get_resource_path("grouping_rules.json")
 
     try:
         with open(rules_file, "r", encoding="utf-8") as f:
@@ -1362,8 +1372,7 @@ def generate_html_report(report: ServerReport, output_file: str):
     """Генерация HTML отчёта"""
 
     # Определяем директорию шаблонов
-    script_dir = Path(__file__).parent
-    templates_dir = script_dir / "templates"
+    templates_dir = get_resource_path("templates")
 
     # Если шаблон существует, используем Jinja2
     if (templates_dir / "report_template.html").exists():

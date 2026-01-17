@@ -7,15 +7,36 @@
 
 ## Установка
 
-**Linux:** ```./install.sh```
+### Готовые бинарники (рекомендуется)
 
-**Windows:** ```install.bat```
+Скачайте готовый бинарник для вашей ОС со страницы [Releases](https://github.com/rsyuzyov/fastlogcheck/releases):
+
+- **Linux:** `fast-log-check-linux-amd64`
+- **Windows:** `fast-log-check-windows-amd64.exe`
+
+```bash
+# Linux - сделать исполняемым и запустить
+chmod +x fast-log-check-linux-amd64
+./fast-log-check-linux-amd64 server1.example.com
+```
+
+```powershell
+# Windows
+.\fast-log-check-windows-amd64.exe server1.example.com
+```
+
+### Из исходников (требуется Python 3.8+)
+
+**Linux:** `./install.sh`
+
+**Windows:** `install.bat`
 
 ## Использование
 
 Можно комбинировать указание серверов в командной строке и файле.  
 Для авторизации по паролю используется флаг `--ask-password`.  
-Все примеры для windows, линуксоиды и так все знают.  
+Все примеры для windows, линуксоиды и так все знают.
+
 ```powershell
 python .\run.py server1.example.com server2.example.com
 python .\run.py --file servers.txt
@@ -51,7 +72,7 @@ python .\run.py server1.example.com --file servers.txt --ask-password
 
 ### Структура правил группировки
 
-Каждое правило представляет собой пару "регулярное_выражение" : "параметры_группы", где:
+Каждое правило представляет собой пару "регулярное*выражение" : "параметры*группы", где:
 
 - **Ключ** - регулярное выражение для поиска события в тексте лога
 - **title** - человекочитаемое название группы для отображения в отчете

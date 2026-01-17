@@ -3,3 +3,8 @@ reports/
 __pycache__/
 .claude/
 test*
+
+# PyInstaller
+build/
+dist/
+*.spec
