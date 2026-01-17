@@ -20,10 +20,31 @@ import paramiko
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 
-def get_resource_path(relative_path: str) -> Path:
-    """Получить путь к ресурсу (работает как для dev, так и для PyInstaller)"""
+def get_executable_dir() -> Path:
+    """Получить директорию исполняемого файла"""
     if getattr(sys, 'frozen', False):
-        # Запущен через PyInstaller
+        # Запущен через PyInstaller - берём директорию exe-файла
+        return Path(sys.executable).parent
+    else:
+        # Обычный запуск - директория скрипта
+        return Path(__file__).parent
+
+
+def get_resource_path(relative_path: str, prefer_local: bool = False) -> Path:
+    """Получить путь к ресурсу (работает как для dev, так и для PyInstaller)
+    
+    Args:
+        relative_path: относительный путь к ресурсу
+        prefer_local: если True, сначала ищет файл рядом с exe/скриптом
+    """
+    # Для PyInstaller - сначала проверяем рядом с exe-файлом
+    if prefer_local or getattr(sys, 'frozen', False):
+        local_path = get_executable_dir() / relative_path
+        if local_path.exists():
+            return local_path
+    
+    if getattr(sys, 'frozen', False):
+        # Запущен через PyInstaller - используем встроенные ресурсы
         base_path = Path(sys._MEIPASS)
     else:
         # Обычный запуск
@@ -100,6 +121,7 @@ def parse_arguments() -> argparse.Namespace:
         epilog="""
 Примеры использования:
   %(prog)s server1.example.com
+  %(prog)s admin@192.168.1.100 --ask-password
   %(prog)s server1.example.com server2.example.com server3.example.com --period 48
   %(prog)s --file servers.txt --period 48
   %(prog)s server1.example.com --cleanup-threshold 85 --verbose
@@ -108,7 +130,7 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "hostnames", nargs="*", help="Один или несколько хостов для проверки"
+        "hostnames", nargs="*", help="Один или несколько хостов для проверки (поддерживается формат user@host)"
     )
 
     parser.add_argument(
@@ -206,6 +228,25 @@ def read_servers_from_file(filepath: str) -> List[str]:
         raise FileNotFoundError(f"Файл не найден: {filepath}")
     except Exception as e:
         raise Exception(f"Ошибка при чтении файла {filepath}: {e}")
+
+
+def parse_host_string(host_string: str) -> Tuple[str, Optional[str]]:
+    """Парсинг строки хоста в формате [user@]hostname
+    
+    Поддерживаемые форматы:
+    - hostname                    -> (hostname, None)
+    - user@hostname               -> (hostname, user)
+    - admin@192.168.1.100         -> (192.168.1.100, admin)
+    
+    Returns:
+        Tuple[str, Optional[str]]: (hostname, username или None)
+    """
+    if '@' in host_string:
+        parts = host_string.split('@', 1)
+        username = parts[0]
+        hostname = parts[1]
+        return hostname, username
+    return host_string, None
 
 
 def read_hosts_from_ssh_config(ssh_config_path: Optional[str] = None) -> List[str]:
@@ -459,10 +500,37 @@ CUSTOM_GROUPING_RULES = {}
 
 
 def load_grouping_rules():
-    """Загрузка правил группировки из JSON файла"""
+    """Загрузка правил группировки из JSON файла
+    
+    Порядок поиска файла:
+    1. Рядом с исполняемым файлом (exe) или скриптом
+    2. Встроенный в PyInstaller бандл (если запущен через PyInstaller)
+    
+    Если файл не найден рядом с exe, но есть встроенный - копирует его рядом с exe.
+    """
     global CUSTOM_GROUPING_RULES
 
-    rules_file = get_resource_path("grouping_rules.json")
+    local_rules_file = get_executable_dir() / "grouping_rules.json"
+    
+    # Если файла нет рядом с exe - создаём его из встроенного
+    if not local_rules_file.exists():
+        try:
+            # Получаем путь к встроенному файлу
+            if getattr(sys, 'frozen', False):
+                bundled_path = Path(sys._MEIPASS) / "grouping_rules.json"
+            else:
+                bundled_path = Path(__file__).parent / "grouping_rules.json"
+            
+            if bundled_path.exists():
+                # Копируем встроенный файл рядом с exe
+                import shutil
+                shutil.copy2(bundled_path, local_rules_file)
+                logging.info(f"Создан файл правил группировки: {local_rules_file}")
+        except Exception as e:
+            logging.warning(f"Не удалось создать локальный файл правил: {e}")
+
+    # prefer_local=True - сначала ищем рядом с exe/скриптом
+    rules_file = get_resource_path("grouping_rules.json", prefer_local=True)
 
     try:
         with open(rules_file, "r", encoding="utf-8") as f:
@@ -1260,6 +1328,12 @@ class ServerChecks:
 
 def check_server(hostname: str, args: argparse.Namespace) -> ServerReport:
     """Проверка одного сервера"""
+    # Парсим user@host формат
+    parsed_hostname, parsed_username = parse_host_string(hostname)
+    
+    # Используем пользователя из hostname если указан, иначе из --ssh-user
+    effective_username = parsed_username if parsed_username else args.ssh_user
+    
     logger = logging.getLogger(f"[{hostname}]")
     logger.info("Начало проверки...")
 
@@ -1267,14 +1341,48 @@ def check_server(hostname: str, args: argparse.Namespace) -> ServerReport:
 
     # Подключаемся к серверу
     ssh = SSHConnection(
-        hostname=hostname,
-        username=args.ssh_user,
+        hostname=parsed_hostname,
+        username=effective_username,
         ssh_config=args.ssh_config,
         timeout=args.ssh_timeout,
         password=getattr(args, "password", None),
     )
 
     success, error = ssh.connect()
+
+    # Если не удалось подключиться по ключу и пароль не был задан -
+    # запрашиваем пароль интерактивно
+    if not success and not getattr(args, "password", None):
+        if "authentication" in error.lower() or "no authentication" in error.lower():
+            logger.warning(f"⚠️  Аутентификация по ключу не удалась: {error}")
+            logger.info("🔐 Попытка аутентификации по паролю...")
+            
+            try:
+                password = getpass.getpass(
+                    f"   Введите пароль для {effective_username}@{parsed_hostname}: "
+                )
+                if password:
+                    # Сохраняем пароль для последующих серверов
+                    args.password = password
+                    
+                    # Пробуем подключиться с паролем
+                    ssh = SSHConnection(
+                        hostname=parsed_hostname,
+                        username=effective_username,
+                        ssh_config=args.ssh_config,
+                        timeout=args.ssh_timeout,
+                        password=password,
+                    )
+                    success, error = ssh.connect()
+            except KeyboardInterrupt:
+                logger.warning("\n⚠️  Отменено пользователем")
+                return ServerReport(
+                    hostname=hostname,
+                    timestamp=timestamp,
+                    period_hours=args.period,
+                    connection_error="Отменено пользователем",
+                    checks=[],
+                )
 
     if not success:
         # Создаём отчёт с ошибкой подключения
