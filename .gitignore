@@ -2,7 +2,7 @@
 reports/
 __pycache__/
 .claude/
-test*
+logs/
 
 # PyInstaller
 build/
