@@ -1,0 +1,53 @@
+usage: fast-log-check.exe [-h] [--file FILE] [--use-ssh-config]
+                          [--period PERIOD] [--output OUTPUT]
+                          [--cleanup-threshold CLEANUP_THRESHOLD]
+                          [--parallel PARALLEL] [--ssh-config SSH_CONFIG]
+                          [--ssh-user SSH_USER] [--ssh-timeout SSH_TIMEOUT]
+                          [--ask-password] [--verbose] [--json] [--ai-output]
+                          [--ai-verbose] [--ai-format {compact,standard,full}]
+                          [--min-severity {critical,warning,info}]
+                          [hostnames ...]
+
+Анализ логов серверов через SSH
+
+positional arguments:
+  hostnames             Один или несколько хостов для проверки (поддерживается
+                        формат user@host)
+
+options:
+  -h, --help            show this help message and exit
+  --file FILE           Файл со списком серверов (по одному на строку)
+  --use-ssh-config      Использовать список хостов из SSH конфига
+  --period PERIOD       Период анализа в часах (по умолчанию: 24)
+  --output OUTPUT       Имя выходного файла (по умолчанию:
+                        report_HOSTNAME_YYYY-MM-DD_HH-MM.html)
+  --cleanup-threshold CLEANUP_THRESHOLD
+                        Автоочистка ZFS при превышении N% (по умолчанию:
+                        выключено)
+  --parallel PARALLEL   Количество параллельных потоков (по умолчанию: 4)
+  --ssh-config SSH_CONFIG
+                        Путь к SSH конфигу (по умолчанию: системные настройки
+                        SSH)
+  --ssh-user SSH_USER   Пользователь SSH (по умолчанию: root)
+  --ssh-timeout SSH_TIMEOUT
+                        Timeout SSH команд в секундах (по умолчанию: 30)
+  --ask-password        Запросить пароль для SSH подключения (безопасный ввод)
+  --verbose             Подробный вывод в консоль
+  --json                Дополнительно сохранить результаты в JSON
+  --ai-output           Вывод в AI-friendly JSON формате (stdout, без HTML)
+  --ai-verbose          Включить полные данные (все записи логов) в AI-вывод
+  --ai-format {compact,standard,full}
+                        Формат AI-вывода: compact (минимум), standard (по
+                        умолчанию), full (все детали)
+  --min-severity {critical,warning,info}
+                        Минимальный уровень severity для включения в отчёт (по
+                        умолчанию: warning)
+
+Примеры использования:
+  fast-log-check.exe server1.example.com
+  fast-log-check.exe admin@192.168.1.100 --ask-password
+  fast-log-check.exe server1.example.com server2.example.com server3.example.com --period 48
+  fast-log-check.exe --file servers.txt --period 48
+  fast-log-check.exe server1.example.com --cleanup-threshold 85 --verbose
+  fast-log-check.exe server1.example.com --output custom_report.html
+        

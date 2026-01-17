@@ -1,10 +1,9 @@
 *.log
 reports/
 __pycache__/
-.claude/
 logs/
 
 # PyInstaller
 build/
 dist/
-*.spec
+#*.spec

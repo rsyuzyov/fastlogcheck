@@ -209,6 +209,35 @@ def parse_arguments() -> argparse.Namespace:
         "--json", action="store_true", help="Дополнительно сохранить результаты в JSON"
     )
 
+    # AI-friendly вывод
+    parser.add_argument(
+        "--ai-output",
+        action="store_true",
+        help="Вывод в AI-friendly JSON формате (stdout, без HTML)"
+    )
+
+    parser.add_argument(
+        "--ai-verbose",
+        action="store_true",
+        help="Включить полные данные (все записи логов) в AI-вывод"
+    )
+
+    parser.add_argument(
+        "--ai-format",
+        type=str,
+        choices=["compact", "standard", "full"],
+        default="standard",
+        help="Формат AI-вывода: compact (минимум), standard (по умолчанию), full (все детали)"
+    )
+
+    parser.add_argument(
+        "--min-severity",
+        type=str,
+        choices=["critical", "warning", "info"],
+        default="warning",
+        help="Минимальный уровень severity для включения в отчёт (по умолчанию: warning)"
+    )
+
     return parser.parse_args()
 
 
@@ -497,6 +526,138 @@ def classify_severity(message: str, check_name: str) -> str:
 
 # Глобальная переменная для правил группировки
 CUSTOM_GROUPING_RULES = {}
+
+# Паттерны для категоризации проблем (для AI-вывода)
+CATEGORY_PATTERNS = {
+    "storage": [
+        r"disk.*full",
+        r"no space left",
+        r"zfs.*degraded",
+        r"cannot allocate",
+        r"Раздел.*%.*использовано",
+        r"df\s",
+        r"mount.*failed",
+        r"filesystem.*full",
+        r"quota.*exceeded"
+    ],
+    "cluster": [
+        r"quorum",
+        r"corosync",
+        r"pvecm",
+        r"node.*offline",
+        r"cluster.*failed",
+        r"cman",
+        r"pacemaker",
+        r"no active links",
+        r"link.*down"
+    ],
+    "kernel": [
+        r"kernel",
+        r"\boom\b",
+        r"out of memory",
+        r"segfault",
+        r"panic",
+        r"dmesg",
+        r"oom.killer",
+        r"page allocation failure",
+        r"call trace"
+    ],
+    "authentication": [
+        r"auth",
+        r"login.*fail",
+        r"invalid.*password",
+        r"fail2ban",
+        r"banned",
+        r"sshd.*failed",
+        r"authentication failure",
+        r"pam_unix",
+        r"sudo.*incorrect",
+        r"su\[.*failed"
+    ],
+    "services": [
+        r"systemd",
+        r"service.*failed",
+        r"unit.*failed",
+        r"timeout",
+        r"\.service.*failed",
+        r"job.*failed",
+        r"restart.*failed"
+    ],
+    "network": [
+        r"link.*down",
+        r"connection.*refused",
+        r"network.*unreachable",
+        r"no route",
+        r"socket.*timeout",
+        r"dns.*failed",
+        r"interface.*down"
+    ],
+    "virtualization": [
+        r"qm\s",
+        r"vm\s+\d+",
+        r"pct\s",
+        r"container",
+        r"migration.*failed",
+        r"kvm",
+        r"qemu",
+        r"lxc",
+        r"находится в состоянии STOPPED"
+    ],
+    "replication": [
+        r"replication",
+        r"replicate",
+        r"sync.*failed",
+        r"rsync.*error"
+    ]
+}
+
+
+# Dataclasses для AI-friendly вывода
+@dataclass
+class AIIssueSummary:
+    """Краткое описание проблемы для AI"""
+    server: str
+    category: str
+    message: str
+    severity: str
+    count: int = 1
+
+
+@dataclass
+class AICategorySummary:
+    """Сводка по категории проблем"""
+    total_count: int
+    max_severity: str
+    affected_servers: List[str]
+    examples: List[str]
+
+
+@dataclass
+class AIServerSummary:
+    """Сводка по серверу для AI"""
+    status: str  # critical, warning, ok, unreachable
+    connection_error: Optional[str]
+    hostname: str
+    uptime: str
+    load_average: str
+    errors: int
+    warnings: int
+    categories_affected: List[str]
+    top_issues: List[Dict]
+
+
+@dataclass
+class AIOutput:
+    """AI-friendly структура вывода"""
+    format_version: str
+    format_type: str
+    generated_at: str
+    check_params: Dict
+    summary: Dict
+    critical_issues: List[Dict]
+    issues_by_category: Dict[str, Dict]
+    servers: Dict[str, Dict]
+    detailed_logs: Optional[Dict] = None
 
 
 def load_grouping_rules():
@@ -1476,6 +1637,313 @@ def check_server(hostname: str, args: argparse.Namespace) -> ServerReport:
     )
 
 
+class AIOutputGenerator:
+    """Генератор AI-friendly вывода"""
+
+    SEVERITY_ORDER = {"critical": 0, "error": 1, "warning": 2, "info": 3}
+
+    def __init__(self, reports: List[ServerReport], args: argparse.Namespace):
+        self.reports = reports
+        self.args = args
+        self.start_time = datetime.now()
+
+    def categorize_entry(self, entry: LogEntry, check_name: str = "") -> str:
+        """Определить категорию записи лога"""
+        message_lower = entry.message.lower()
+
+        for category, patterns in CATEGORY_PATTERNS.items():
+            for pattern in patterns:
+                try:
+                    if re.search(pattern, message_lower, re.IGNORECASE):
+                        return category
+                except re.error:
+                    continue
+
+        # Определяем категорию по типу проверки
+        check_to_category = {
+            "storage": "storage",
+            "journalctl_errors": "services",
+            "journalctl_warnings": "services",
+            "auth_log": "authentication",
+            "fail2ban": "authentication",
+            "dmesg": "kernel",
+            "corosync": "cluster",
+            "cluster": "cluster",
+            "pveproxy": "services",
+            "vms_status": "virtualization",
+            "zfs_snapshots": "storage",
+        }
+
+        return check_to_category.get(check_name, "other")
+
+    def _get_severity_priority(self, severity: str) -> int:
+        """Получить приоритет severity (меньше = важнее)"""
+        return self.SEVERITY_ORDER.get(severity.lower(), 99)
+
+    def _passes_severity_filter(self, severity: str) -> bool:
+        """Проверить, проходит ли severity минимальный фильтр"""
+        min_severity = getattr(self.args, "min_severity", "warning")
+        severity_threshold = self._get_severity_priority(min_severity)
+        entry_priority = self._get_severity_priority(severity)
+        return entry_priority <= severity_threshold
+
+    def _get_server_status(self, report: ServerReport) -> str:
+        """Определить статус сервера"""
+        if report.connection_error:
+            return "unreachable"
+        if report.total_errors > 0:
+            return "critical"
+        if report.total_warnings > 0:
+            return "warning"
+        return "ok"
+
+    def _get_overall_status(self) -> str:
+        """Определить общий статус всех серверов"""
+        statuses = [self._get_server_status(r) for r in self.reports]
+        if "unreachable" in statuses or "critical" in statuses:
+            return "critical"
+        if "warning" in statuses:
+            return "warning"
+        return "ok"
+
+    def _collect_all_issues(self) -> List[Dict]:
+        """Собрать все проблемы со всех серверов"""
+        all_issues = []
+
+        for report in self.reports:
+            if report.connection_error:
+                all_issues.append({
+                    "server": report.hostname,
+                    "category": "connection",
+                    "message": report.connection_error,
+                    "severity": "critical",
+                    "count": 1,
+                    "check_name": "connection"
+                })
+                continue
+
+            for check in report.checks:
+                for entry in check.entries:
+                    if not self._passes_severity_filter(entry.severity):
+                        continue
+
+                    category = self.categorize_entry(entry, check.name)
+                    all_issues.append({
+                        "server": report.hostname,
+                        "category": category,
+                        "message": entry.message,
+                        "severity": entry.severity,
+                        "count": 1,
+                        "check_name": check.name,
+                        "timestamp": entry.timestamp
+                    })
+
+        return all_issues
+
+    def _group_issues_by_category(self, issues: List[Dict]) -> Dict[str, Dict]:
+        """Группировать проблемы по категориям"""
+        categories = {}
+
+        for issue in issues:
+            cat = issue["category"]
+            if cat not in categories:
+                categories[cat] = {
+                    "total_count": 0,
+                    "max_severity": "info",
+                    "affected_servers": set(),
+                    "examples": []
+                }
+
+            categories[cat]["total_count"] += 1
+            categories[cat]["affected_servers"].add(issue["server"])
+
+            # Обновляем max_severity
+            if self._get_severity_priority(issue["severity"]) < \
+               self._get_severity_priority(categories[cat]["max_severity"]):
+                categories[cat]["max_severity"] = issue["severity"]
+
+            # Добавляем примеры (максимум 3)
+            if len(categories[cat]["examples"]) < 3:
+                example = f"{issue['server']}: {issue['message'][:100]}"
+                if example not in categories[cat]["examples"]:
+                    categories[cat]["examples"].append(example)
+
+        # Преобразуем set в list
+        for cat in categories:
+            categories[cat]["affected_servers"] = list(categories[cat]["affected_servers"])
+
+        return categories
+
+    def _get_critical_issues(self, issues: List[Dict]) -> List[Dict]:
+        """Получить список критических проблем"""
+        critical = []
+        for issue in issues:
+            if issue["severity"] in ("critical", "error"):
+                critical.append({
+                    "server": issue["server"],
+                    "category": issue["category"],
+                    "message": issue["message"][:200],
+                    "severity": issue["severity"],
+                    "count": issue.get("count", 1)
+                })
+        return critical[:20]  # Максимум 20 критических проблем
+
+    def _build_server_summary(self, report: ServerReport, issues: List[Dict]) -> Dict:
+        """Построить сводку по серверу"""
+        server_issues = [i for i in issues if i["server"] == report.hostname]
+        categories_affected = list(set(i["category"] for i in server_issues))
+
+        # Top issues - самые важные проблемы
+        top_issues = []
+        critical_issues = [i for i in server_issues if i["severity"] in ("critical", "error")]
+        for issue in critical_issues[:5]:
+            top_issues.append({
+                "category": issue["category"],
+                "message": issue["message"][:150],
+                "severity": issue["severity"]
+            })
+
+        return {
+            "status": self._get_server_status(report),
+            "connection_error": report.connection_error,
+            "hostname": report.hostname,
+            "uptime": report.uptime,
+            "load_average": report.load_average,
+            "errors": report.total_errors,
+            "warnings": report.total_warnings,
+            "categories_affected": categories_affected,
+            "top_issues": top_issues
+        }
+
+    def _build_detailed_logs(self) -> Dict:
+        """Построить детальные логи для формата full"""
+        detailed = {}
+
+        for report in self.reports:
+            if report.connection_error:
+                detailed[report.hostname] = {"connection_error": report.connection_error}
+                continue
+
+            server_data = {}
+            for check in report.checks:
+                check_data = {
+                    "status": check.status,
+                    "errors": check.errors,
+                    "warnings": check.warnings,
+                    "entries": []
+                }
+
+                grouped = group_entries(check.entries)
+                for group in grouped:
+                    if not self._passes_severity_filter(group.entry.severity):
+                        continue
+
+                    check_data["entries"].append({
+                        "count": group.count,
+                        "first_timestamp": group.first_timestamp,
+                        "last_timestamp": group.last_timestamp,
+                        "type": group.entry.type,
+                        "severity": group.custom_severity or group.entry.severity,
+                        "message": group.group_message,
+                        "category": self.categorize_entry(group.entry, check.name)
+                    })
+
+                if check_data["entries"] or check.status != "success":
+                    server_data[check.name] = check_data
+
+            detailed[report.hostname] = server_data
+
+        return detailed
+
+    def generate(self) -> Dict:
+        """Генерация AI-friendly вывода"""
+        all_issues = self._collect_all_issues()
+        issues_by_category = self._group_issues_by_category(all_issues)
+        critical_issues = self._get_critical_issues(all_issues)
+
+        servers_ok = sum(1 for r in self.reports if self._get_server_status(r) == "ok")
+        servers_warning = sum(1 for r in self.reports if self._get_server_status(r) == "warning")
+        servers_critical = sum(1 for r in self.reports if self._get_server_status(r) == "critical")
+        servers_unreachable = sum(1 for r in self.reports if self._get_server_status(r) == "unreachable")
+
+        output = {
+            "format_version": "2.0",
+            "format_type": getattr(self.args, "ai_format", "standard"),
+            "generated_at": datetime.now().isoformat(),
+            "check_params": {
+                "period_hours": self.args.period,
+                "servers_requested": [r.hostname for r in self.reports],
+                "min_severity": getattr(self.args, "min_severity", "warning")
+            },
+            "summary": {
+                "overall_status": self._get_overall_status(),
+                "servers_total": len(self.reports),
+                "servers_ok": servers_ok,
+                "servers_warning": servers_warning,
+                "servers_critical": servers_critical,
+                "servers_unreachable": servers_unreachable,
+                "total_errors": sum(r.total_errors for r in self.reports),
+                "total_warnings": sum(r.total_warnings for r in self.reports)
+            },
+            "critical_issues": critical_issues,
+            "issues_by_category": issues_by_category,
+            "servers": {}
+        }
+
+        # Добавляем сводку по каждому серверу
+        for report in self.reports:
+            output["servers"][report.hostname] = self._build_server_summary(report, all_issues)
+
+        # Для формата full добавляем детальные логи
+        if getattr(self.args, "ai_format", "standard") == "full":
+            output["detailed_logs"] = self._build_detailed_logs()
+
+        return output
+
+    def to_compact_json(self) -> str:
+        """Компактный JSON для минимизации токенов"""
+        full_output = self.generate()
+
+        # Формируем краткую сводку
+        summary = full_output["summary"]
+        status_parts = []
+        if summary["servers_critical"] > 0:
+            status_parts.append(f"{summary['servers_critical']} critical")
+        if summary["servers_warning"] > 0:
+            status_parts.append(f"{summary['servers_warning']} warning")
+        if summary["servers_ok"] > 0:
+            status_parts.append(f"{summary['servers_ok']} ok")
+        if summary["servers_unreachable"] > 0:
+            status_parts.append(f"{summary['servers_unreachable']} unreachable")
+
+        summary_text = f"{summary['servers_total']} servers: {', '.join(status_parts)}"
+        summary_text += f" | {summary['total_errors']} errors, {summary['total_warnings']} warnings"
+
+        # Критические проблемы в виде строк
+        critical_strs = []
+        for issue in full_output["critical_issues"][:10]:
+            critical_strs.append(f"{issue['server']}: {issue['category']} - {issue['message'][:80]}")
+
+        compact = {
+            "format_version": "2.0",
+            "format_type": "compact",
+            "status": summary["overall_status"],
+            "summary": summary_text,
+            "critical_issues": critical_strs,
+            "servers_status": {
+                hostname: data["status"]
+                for hostname, data in full_output["servers"].items()
+            }
+        }
+
+        return json.dumps(compact, ensure_ascii=False, indent=2)
+
+    def to_json(self) -> str:
+        """Стандартный JSON вывод"""
+        output = self.generate()
+        return json.dumps(output, ensure_ascii=False, indent=2)
+
+
 def generate_html_report(report: ServerReport, output_file: str):
     """Генерация HTML отчёта"""
 
@@ -2068,6 +2536,10 @@ def main():
             report = check_server(hostname, args)
             reports.append(report)
 
+            # Пропускаем генерацию HTML если используется --ai-output
+            if args.ai_output:
+                continue
+
             # Генерируем отчёт для этого сервера
             if args.output:
                 output_file = args.output
@@ -2096,6 +2568,18 @@ def main():
             logger.error(
                 f"❌ Ошибка при проверке {hostname}: {e}", exc_info=args.verbose
             )
+
+    # AI-friendly вывод
+    if args.ai_output:
+        generator = AIOutputGenerator(reports, args)
+        
+        if args.ai_format == "compact":
+            print(generator.to_compact_json())
+        else:
+            print(generator.to_json())
+        
+        # Завершаем работу после AI-вывода
+        return
 
     # Выводим итоговую статистику
     logger.info("=" * 80)

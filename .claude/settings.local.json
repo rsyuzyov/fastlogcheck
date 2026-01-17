@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -ExecutionPolicy Bypass -File \"c:\\temp\\fastlogcheck\\install.ps1\")",
+      "Bash(cmd /c \"c:\\temp\\fastlogcheck\\install.bat\")",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -Command \"chcp 65001 | Out-Null; & ''c:\\temp\\fastlogcheck\\install.ps1''\")",
+      "Bash(powershell -Command:*)",
+      "Bash(python:*)",
+      "Bash(dir:*)",
+      "Bash(cmd /c dir /B c:tempfastlogcheckreports)",
+      "Bash(ssh:*)",
+      "Bash(findstr:*)",
+      "Bash(cat:*)",
+      "Bash(copy:*)",
+      "Bash(cmd /c copy \"c:\\temp\\fastlogcheck\\docs\\report.jpg\" \"c:\\temp\\fastlogcheck\\docs\\screenshot-example.png\")",
+      "Bash(cmd /c \"c:\\temp\\fastlogcheck\\install-python.bat /?\")",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -Command \"& { Get-Content ''c:\\temp\\fastlogcheck\\install-python.ps1'' -ErrorAction Stop | Out-Null; Write-Host ''Syntax OK'' }\")",
+      "Bash(cmd /c \"del /f c:\\temp\\fastlogcheck\\install-python.bat && del /f c:\\temp\\fastlogcheck\\install-python.ps1\")",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -Command \"& { Get-Content ''c:\\temp\\fastlogcheck\\python-installer\\install-python.ps1'' -ErrorAction Stop | Out-Null; Write-Host ''Синтаксис PowerShell: OK'' }\")",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -Command \"& { Get-Content ''c:\\temp\\fastlogcheck\\python-installer\\install-python.bat'' -ErrorAction Stop | Out-Null; Write-Host ''Синтаксис BAT: OK'' }\")",
+      "Bash(cmd /c \"c:\\temp\\fastlogcheck\\test-elevation.bat\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

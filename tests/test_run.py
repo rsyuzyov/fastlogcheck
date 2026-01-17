@@ -16,6 +16,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from run import (
+    AIOutputGenerator,
+    CATEGORY_PATTERNS,
     CheckResult,
     GroupedLogEntry,
     LogEntry,
@@ -333,6 +335,230 @@ class TestGroupingRulesFile:
             assert "severity" in config, f"Отсутствует severity для {pattern}"
             assert config["severity"] in ["error", "warning", "skip", ""], \
                 f"Неверный severity для {pattern}: {config['severity']}"
+
+
+class TestCategoryPatterns:
+    """Тесты для CATEGORY_PATTERNS"""
+
+    def test_category_patterns_exist(self):
+        """Проверка что все категории существуют"""
+        expected_categories = [
+            "storage", "cluster", "kernel", "authentication",
+            "services", "network", "virtualization", "replication"
+        ]
+        for cat in expected_categories:
+            assert cat in CATEGORY_PATTERNS, f"Отсутствует категория: {cat}"
+
+    def test_patterns_are_valid_regex(self):
+        """Проверка что все паттерны - валидные регулярные выражения"""
+        import re
+        for category, patterns in CATEGORY_PATTERNS.items():
+            for pattern in patterns:
+                try:
+                    re.compile(pattern)
+                except re.error as e:
+                    pytest.fail(f"Некорректный regex в {category}: {pattern} - {e}")
+
+
+class TestAIOutputGenerator:
+    """Тесты для класса AIOutputGenerator"""
+
+    def _create_mock_args(self, ai_format="standard", min_severity="warning"):
+        """Создать mock объект args"""
+        args = MagicMock()
+        args.period = 24
+        args.ai_format = ai_format
+        args.min_severity = min_severity
+        return args
+
+    def _create_test_report(self, hostname="server1", errors=0, warnings=0, entries=None):
+        """Создать тестовый ServerReport"""
+        if entries is None:
+            entries = []
+        
+        check = CheckResult(
+            name="test_check",
+            source_name="Test Check",
+            source_path="/test",
+            errors=errors,
+            warnings=warnings,
+            status="error" if errors > 0 else ("warning" if warnings > 0 else "success"),
+            entries=entries
+        )
+        
+        return ServerReport(
+            hostname=hostname,
+            timestamp="2024-01-17 10:00:00",
+            period_hours=24,
+            connection_error=None,
+            checks=[check],
+            total_errors=errors,
+            total_warnings=warnings,
+            uptime="up 10 days",
+            load_average="0.5, 0.4, 0.3"
+        )
+
+    def test_generate_basic_output(self):
+        """Тест генерации базового вывода"""
+        args = self._create_mock_args()
+        report = self._create_test_report()
+        
+        generator = AIOutputGenerator([report], args)
+        output = generator.generate()
+        
+        assert output["format_version"] == "2.0"
+        assert output["format_type"] == "standard"
+        assert "summary" in output
+        assert "critical_issues" in output
+        assert "issues_by_category" in output
+        assert "servers" in output
+
+    def test_summary_counts(self):
+        """Тест подсчёта статистики"""
+        args = self._create_mock_args()
+        reports = [
+            self._create_test_report("server1", errors=5, warnings=3),
+            self._create_test_report("server2", errors=0, warnings=2),
+            self._create_test_report("server3", errors=0, warnings=0),
+        ]
+        
+        generator = AIOutputGenerator(reports, args)
+        output = generator.generate()
+        
+        assert output["summary"]["servers_total"] == 3
+        assert output["summary"]["servers_critical"] == 1
+        assert output["summary"]["servers_warning"] == 1
+        assert output["summary"]["servers_ok"] == 1
+        assert output["summary"]["total_errors"] == 5
+        assert output["summary"]["total_warnings"] == 5
+
+    def test_categorize_entry_storage(self):
+        """Тест категоризации записи как storage"""
+        args = self._create_mock_args()
+        report = self._create_test_report()
+        
+        generator = AIOutputGenerator([report], args)
+        
+        entry = LogEntry(
+            timestamp="10:00",
+            type="Error",
+            severity="critical",
+            message="Disk full: no space left on /var"
+        )
+        
+        category = generator.categorize_entry(entry, "storage")
+        assert category == "storage"
+
+    def test_categorize_entry_cluster(self):
+        """Тест категоризации записи как cluster"""
+        args = self._create_mock_args()
+        report = self._create_test_report()
+        
+        generator = AIOutputGenerator([report], args)
+        
+        entry = LogEntry(
+            timestamp="10:00",
+            type="Error",
+            severity="critical",
+            message="Lost quorum, cluster stopped"
+        )
+        
+        category = generator.categorize_entry(entry, "cluster")
+        assert category == "cluster"
+
+    def test_severity_filter(self):
+        """Тест фильтрации по severity"""
+        args = self._create_mock_args(min_severity="critical")
+        
+        entries = [
+            LogEntry(timestamp="10:00", type="Error", severity="critical", message="Critical error"),
+            LogEntry(timestamp="10:01", type="Warning", severity="warning", message="Warning message"),
+            LogEntry(timestamp="10:02", type="Info", severity="info", message="Info message"),
+        ]
+        
+        report = self._create_test_report("server1", errors=1, warnings=1, entries=entries)
+        
+        generator = AIOutputGenerator([report], args)
+        
+        # Только critical должен пройти фильтр
+        assert generator._passes_severity_filter("critical") == True
+        assert generator._passes_severity_filter("warning") == False
+        assert generator._passes_severity_filter("info") == False
+
+    def test_to_compact_json(self):
+        """Тест компактного JSON-вывода"""
+        args = self._create_mock_args(ai_format="compact")
+        
+        entries = [
+            LogEntry(timestamp="10:00", type="Error", severity="critical", message="Critical error on disk"),
+        ]
+        
+        report = self._create_test_report("server1", errors=1, warnings=0, entries=entries)
+        
+        generator = AIOutputGenerator([report], args)
+        compact_json = generator.to_compact_json()
+        
+        # Парсим JSON
+        data = json.loads(compact_json)
+        
+        assert data["format_type"] == "compact"
+        assert data["status"] == "critical"
+        assert "summary" in data
+        assert "servers_status" in data
+        assert data["servers_status"]["server1"] == "critical"
+
+    def test_to_json_standard(self):
+        """Тест стандартного JSON-вывода"""
+        args = self._create_mock_args(ai_format="standard")
+        report = self._create_test_report("server1", errors=2, warnings=3)
+        
+        generator = AIOutputGenerator([report], args)
+        json_output = generator.to_json()
+        
+        # Парсим JSON
+        data = json.loads(json_output)
+        
+        assert data["format_type"] == "standard"
+        assert data["summary"]["servers_total"] == 1
+        assert "server1" in data["servers"]
+
+    def test_server_status_unreachable(self):
+        """Тест статуса 'unreachable' для серверов с ошибкой подключения"""
+        args = self._create_mock_args()
+        
+        report = ServerReport(
+            hostname="unreachable-server",
+            timestamp="2024-01-17 10:00:00",
+            period_hours=24,
+            connection_error="Connection refused",
+            checks=[],
+            total_errors=0,
+            total_warnings=0
+        )
+        
+        generator = AIOutputGenerator([report], args)
+        output = generator.generate()
+        
+        assert output["summary"]["servers_unreachable"] == 1
+        assert output["servers"]["unreachable-server"]["status"] == "unreachable"
+
+    def test_issues_grouped_by_category(self):
+        """Тест группировки проблем по категориям"""
+        args = self._create_mock_args()
+        
+        entries = [
+            LogEntry(timestamp="10:00", type="Error", severity="critical", message="Disk full"),
+            LogEntry(timestamp="10:01", type="Error", severity="critical", message="ZFS degraded"),
+            LogEntry(timestamp="10:02", type="Warning", severity="warning", message="quorum warning"),
+        ]
+        
+        report = self._create_test_report("server1", errors=2, warnings=1, entries=entries)
+        
+        generator = AIOutputGenerator([report], args)
+        output = generator.generate()
+        
+        # Должны быть категории storage и cluster
+        assert "storage" in output["issues_by_category"] or "cluster" in output["issues_by_category"]
 
 
 # Интеграционные тесты (требуют SSH-сервер)
