@@ -119,14 +119,14 @@ def parse_arguments() -> argparse.Namespace:
         description="Анализ логов серверов через SSH",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Примеры использования:
-  %(prog)s server1.example.com
-  %(prog)s admin@192.168.1.100 --ask-password
-  %(prog)s server1.example.com server2.example.com server3.example.com --period 48
-  %(prog)s --file servers.txt --period 48
-  %(prog)s server1.example.com --cleanup-threshold 85 --verbose
-  %(prog)s server1.example.com --output custom_report.html
-        """,
+    Примеры использования:
+      %(prog)s server1.example.com
+      %(prog)s admin@192.168.1.100 --ask-password
+      %(prog)s server1.example.com server2.example.com server3.example.com --period 48
+      %(prog)s --file servers.txt --period 48
+      %(prog)s server1.example.com --cleanup-threshold 85 --verbose
+      %(prog)s server1.example.com --output ./my_reports
+            """,
     )
 
     parser.add_argument(
@@ -156,8 +156,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=str,
-        default=None,
-        help="Имя выходного файла (по умолчанию: report_HOSTNAME_YYYY-MM-DD_HH-MM.html)",
+        default="reports",
+        help="Каталог для отчётов (по умолчанию: reports). Файлы: report_HOSTNAME_YYYY-MM-DD_HH-MM.html",
     )
 
     parser.add_argument(
@@ -2541,13 +2541,10 @@ def main():
                 continue
 
             # Генерируем отчёт для этого сервера
-            if args.output:
-                output_file = args.output
-            else:
-                reports_dir = Path("reports")
-                reports_dir.mkdir(exist_ok=True)
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-                output_file = str(reports_dir / f"report_{hostname}_{timestamp}.html")
+            reports_dir = Path(args.output)
+            reports_dir.mkdir(exist_ok=True)
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+            output_file = str(reports_dir / f"report_{hostname}_{timestamp}.html")
 
             generate_html_report(report, output_file)
             logger.info(f"✅ Отчёт сохранён: {output_file}")

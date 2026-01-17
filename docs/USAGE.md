@@ -20,7 +20,7 @@ usage: run.py [-h] [--file FILE] [--period PERIOD] [--output OUTPUT]
   --file FILE              Файл со списком серверов (по одному на строку)
   --use-ssh-config         Использовать список хостов из SSH конфига
   --period PERIOD          Период анализа в часах (по умолчанию: 24)
-  --output OUTPUT          Имя выходного файла (по умолчанию: report_HOSTNAME_YYYY-MM-DD_HH-MM.html)
+  --output OUTPUT          Каталог для отчётов (по умолчанию: reports). Файлы: report_HOSTNAME_YYYY-MM-DD_HH-MM.html
   --cleanup-threshold N    Автоочистка ZFS при превышении N% (по умолчанию: выключено)
   --parallel N             Количество параллельных потоков (по умолчанию: 4)
   --ssh-config PATH        Путь к SSH конфигу (по умолчанию: системные настройки SSH)
