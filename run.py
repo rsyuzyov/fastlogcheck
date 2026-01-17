@@ -4,12 +4,24 @@ Server Logs Analysis Tool
 Подключается к серверам по SSH и анализирует логи за указанный период
 """
 
+import sys
+import os
+
+# Устанавливаем UTF-8 для консоли Windows до всех импортов
+if sys.platform == 'win32':
+    # Устанавливаем кодировку UTF-8 для консоли
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    # Также устанавливаем переменную окружения для Python
+    os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+
 import argparse
 import getpass
 import json
 import logging
 import re
-import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
@@ -88,9 +100,6 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
     console_handler.setLevel(level)
     console_formatter = logging.Formatter("%(message)s")
     console_handler.setFormatter(console_formatter)
-    # Принудительно устанавливаем UTF-8 для консоли
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
 
     # Логирование в файл с UTF-8
     file_handler = logging.FileHandler(str(log_file), encoding="utf-8")
@@ -3162,6 +3171,10 @@ def generate_index_html_inline(
 
 def main():
     """Основная функция"""
+    # Если запущено без аргументов - показываем help
+    if len(sys.argv) == 1:
+        sys.argv.append('--help')
+
     args = parse_arguments()
     logger = setup_logging(args.verbose)
 
